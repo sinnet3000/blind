@@ -41,7 +41,17 @@ func NewDNSClient(listenAddr, dnsServer string, debug bool) (*DNSClient, error) 
 	}, nil
 }
 
-// Start starts the DNS tunnel client
+// Add a new method to reset client state
+func (c *DNSClient) resetState() {
+	// Generate new session ID for new connections
+	c.sessionID = generateSessionID()
+
+	if c.debug {
+		log.Printf("Reset client state with new session ID: %s", c.sessionID)
+	}
+}
+
+// Update Start method to handle multiple connections
 func (c *DNSClient) Start() error {
 	listener, err := net.Listen("tcp", c.listenAddr)
 	if err != nil {
@@ -52,26 +62,46 @@ func (c *DNSClient) Start() error {
 	if c.debug {
 		log.Printf("TCP listener started on %s", c.listenAddr)
 		log.Printf("Tunneling to DNS server at %s", c.dnsServer)
-		log.Printf("Session ID: %s", c.sessionID)
 	}
 
 	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			return fmt.Errorf("failed to accept connection: %v", err)
+		// Reset state for each new connection
+		c.resetState()
+
+		if c.debug {
+			log.Printf("Waiting for new connection with session ID: %s", c.sessionID)
 		}
 
-		go c.handleConnection(conn)
+		conn, err := listener.Accept()
+		if err != nil {
+			if c.debug {
+				log.Printf("Error accepting connection: %v", err)
+			}
+			continue
+		}
+
+		if c.debug {
+			log.Printf("New connection accepted, handling with session ID: %s", c.sessionID)
+		}
+
+		// Handle connection in goroutine
+		go func() {
+			c.handleConnection(conn)
+			if c.debug {
+				log.Printf("Connection handled, ready for next connection")
+			}
+		}()
 	}
 }
 
-// handleConnection handles a TCP connection
+// Update handleConnection to be more robust
 func (c *DNSClient) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	// Add connection monitoring
 	done := make(chan struct{})
 	defer close(done)
+
+	errChan := make(chan error, 2)
 
 	// Start read goroutine
 	go func() {
@@ -89,6 +119,7 @@ func (c *DNSClient) handleConnection(conn net.Conn) {
 							log.Printf("Error reading from connection: %v", err)
 						}
 					}
+					errChan <- err
 					return
 				}
 				if n > 0 {
@@ -96,6 +127,7 @@ func (c *DNSClient) handleConnection(conn net.Conn) {
 						if c.debug {
 							log.Printf("Error sending chunk: %v", err)
 						}
+						errChan <- err
 						return
 					}
 					sequence++
@@ -116,17 +148,28 @@ func (c *DNSClient) handleConnection(conn net.Conn) {
 					if c.debug {
 						log.Printf("Poll error: %v", err)
 					}
-					continue
+					errChan <- err
+					return
 				}
-				if data != nil && len(data) > 0 {
-					if _, err := conn.Write(data); err != nil {
+				if data != nil {
+					if string(data) == "CLOSED" {
 						if c.debug {
-							log.Printf("Error writing to connection: %v", err)
+							log.Printf("Server indicated session closed")
 						}
+						errChan <- fmt.Errorf("session closed by server")
 						return
 					}
-					if c.debug {
-						log.Printf("Wrote %d bytes from poll to local connection", len(data))
+					if len(data) > 0 && string(data) != "EMPTY" {
+						if _, err := conn.Write(data); err != nil {
+							if c.debug {
+								log.Printf("Error writing to connection: %v", err)
+							}
+							errChan <- err
+							return
+						}
+						if c.debug {
+							log.Printf("Wrote %d bytes from poll to local connection", len(data))
+						}
 					}
 				}
 				time.Sleep(pollDelay)
@@ -134,8 +177,14 @@ func (c *DNSClient) handleConnection(conn net.Conn) {
 		}
 	}()
 
-	// Wait for connection to close
-	<-done
+	// Wait for either an error or done signal
+	select {
+	case err := <-errChan:
+		if c.debug {
+			log.Printf("Session ended: %v", err)
+		}
+	case <-done:
+	}
 }
 
 // sendChunk sends a chunk of data through DNS

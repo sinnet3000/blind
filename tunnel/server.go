@@ -16,6 +16,7 @@ type Session struct {
 	conn       net.Conn
 	lastActive time.Time
 	mu         sync.Mutex
+	closed     bool
 }
 
 func (s *Session) reconnect(tcpDest string) error {
@@ -136,10 +137,19 @@ func (s *Session) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.conn != nil {
-		s.conn.Close()
-		s.conn = nil
+	if !s.closed {
+		s.closed = true
+		if s.conn != nil {
+			s.conn.Close()
+			s.conn = nil
+		}
 	}
+}
+
+func (s *Session) IsClosed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.closed
 }
 
 type DNSServer struct {
@@ -202,8 +212,8 @@ func (s *DNSServer) getSession(sessionID string) (*Session, error) {
 }
 
 func (s *DNSServer) handlePoll(session *Session) ([]byte, error) {
-	if session == nil {
-		return nil, fmt.Errorf("nil session")
+	if session == nil || session.IsClosed() {
+		return []byte("CLOSED"), nil
 	}
 
 	buffer := make([]byte, maxChunkSize)
@@ -215,7 +225,7 @@ func (s *DNSServer) handlePoll(session *Session) ([]byte, error) {
 	if err != nil {
 		if err == io.EOF || strings.Contains(err.Error(), "connection reset") {
 			session.Close()
-			return nil, nil
+			return []byte("CLOSED"), nil
 		}
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return []byte("EMPTY"), nil
@@ -472,9 +482,12 @@ func (s *DNSServer) cleanupSessions() {
 		s.mu.Lock()
 		now := time.Now()
 		for id, session := range s.sessions {
-			if now.Sub(session.lastActive) > 5*time.Minute {
+			if session.IsClosed() || now.Sub(session.lastActive) > 5*time.Minute {
 				if s.debug {
-					log.Printf("Cleaning up inactive session: %s", id)
+					log.Printf("Cleaning up session: %s (closed: %v, inactive: %v)",
+						id,
+						session.IsClosed(),
+						now.Sub(session.lastActive) > 5*time.Minute)
 				}
 				session.Close()
 				delete(s.sessions, id)
