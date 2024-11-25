@@ -1,4 +1,4 @@
-# Blind - DNS Tunnel
+# B[l]ind - DNS Tunnel
 
 A DNS tunneling tool for TCP traffic, written in Go.
 
@@ -142,7 +142,3 @@ MIT License - See LICENSE file for details
 ## Author
 
 Barrett Lyon
-```
-
-</rewritten_file>
-```
