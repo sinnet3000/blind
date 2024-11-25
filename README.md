@@ -1,6 +1,6 @@
 # Blind - DNS Tunnel
 
-A high-performance DNS tunneling tool for TCP/IP traffic, written in Go.
+A DNS tunneling tool for TCP traffic, written in Go.
 
 Copyright (c) 2024 Barrett Lyon. All rights reserved.
 MIT License
@@ -13,21 +13,21 @@ Blind allows you to tunnel TCP traffic through DNS queries, enabling connectivit
 
 - TCP over DNS tunneling
 - Support for both client and server modes
-- High performance and low latency
 - Automatic session management
 - Resilient connection handling
 - Debug logging
+- Works with ssh
 
 ## Installation
 
 ```bash
-go install github.com/blyon/blind@latest
+go install github.com/doxx/blind@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/blyon/blind.git
+git clone https://github.com/doxx/blind.git
 cd blind
 go build
 ```
