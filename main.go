@@ -9,6 +9,37 @@ import (
 	"blind/tunnel"
 )
 
+func init() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, `Blind - DNS Tunnel
+Copyright (c) 2024 Barrett Lyon. All rights reserved.
+MIT License
+
+Usage: %s [options]
+
+Server Mode Options:
+  -server-listen string    Address to listen for DNS requests (e.g., "0.0.0.0:53")
+  -server-dest string      Destination address to forward traffic (e.g., "10.0.0.1:22")
+
+Client Mode Options:
+  -client-listen string    Local address to listen for TCP connections (e.g., "127.0.0.1:2222")
+  -client-dest string      DNS server address to tunnel through (e.g., "8.8.8.8:53")
+
+Common Options:
+  -debug                  Enable debug logging
+  -h                      Show this help message
+
+Examples:
+  # Run server listening on UDP port 53, forwarding to SSH server:
+  sudo %s -server-listen 0.0.0.0:53 -server-dest 10.0.0.1:22
+
+  # Run client listening on local port 2222, tunneling through DNS server:
+  %s -client-listen 127.0.0.1:2222 -client-dest dns.example.com:53
+
+`, os.Args[0], os.Args[0], os.Args[0])
+	}
+}
+
 func main() {
 	// Client flags
 	clientListen := flag.String("client-listen", "", "(e.g., 127.0.0.1:8080) Local TCP port to listen on")
